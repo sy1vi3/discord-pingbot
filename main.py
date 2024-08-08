@@ -14,8 +14,9 @@ import os
 import re
 import sys
 import atexit
+import zlib
 
-gateway_url = "wss://gateway.discord.gg"
+gateway_url = "wss://gateway.discord.gg/?v=9&encoding=json&compress=zlib-stream"
 discord_url = "https://discord.com/api"
 
 discord_headers = {
@@ -34,7 +35,12 @@ started = False
 ping_regexes = list()
 non_tracked_users = list()
 
+ZLIB_SUFFIX = b'\x00\x00\xff\xff'
+buffer = bytearray()
+inflator = zlib.decompressobj()
+
 db = PostgresqlExtDatabase('vtow', user=os.environ['DB_USER'], password=os.environ['DB_PASS'], host=os.environ['DB_HOST'], port=os.environ['DB_PORT'])
+
 class BaseModel(Model):
     class Meta:
         database = db
@@ -88,7 +94,6 @@ def repeat_heartbeat(arg):
         query_users = Users.select().where(Users.code == 0)
         for i, r in enumerate(query_users):
             non_tracked_users.append(query_users[i].user)
-        print(non_tracked_users)
 
 def login():
     msg = {
@@ -97,16 +102,25 @@ def login():
             "token": os.environ['DISCORD_USER_ACCT_TOKEN'],
             "intents": 34345,
             "properties": {
-            "os": "linux",
-            "browser": "my_library",
-            "device": "my_library"
+                "os": "linux",
+                "browser": "my_library",
+                "device": "my_library"
             }
         }
     }
     send_msg(msg)
 
 def on_message(ws, message):
-    msg = json.loads(message)
+    global buffer, inflator
+    try:
+        msg = json.loads(message)
+    except:
+        buffer.extend(message)
+        if len(message) < 4 or message[-4:] != ZLIB_SUFFIX:
+            return
+        msg = json.loads(inflator.decompress(buffer))
+        buffer = bytearray()
+    print(f"ws: {msg['op']}")
     if msg['op'] == 10:
         heartbeat_interval = msg['d']['heartbeat_interval']
         time.sleep(random.random() * heartbeat_interval / 10000)
@@ -234,6 +248,7 @@ def on_message(ws, message):
                 files = dict()
                 for index, i in enumerate(recent_revision.attachments):
                     with open('./temp/' + i['filename'], 'wb') as f:
+                        print(i['url'])
                         shutil.copyfileobj(requests.get(i['url'], stream=True).raw, f)
                     print("got here")
                     files[f'files[{index}]'] = open('./temp/' + i['filename'], 'rb')
@@ -244,13 +259,12 @@ def on_message(ws, message):
                                   data=webhook_data,
                                   files=files)
                 for index, i in enumerate(recent_revision.attachments):
-                    os.remove("./temp/" + i['filename'])
+                    # os.remove("./temp/" + i['filename'])
+                    pass
             else:
                 r = requests.post(webhook_url_deletes,
                               json=webhook_data,
                               headers=discord_headers)
-            
-            
 
 
 def on_error(ws, error):
