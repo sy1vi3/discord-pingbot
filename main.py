@@ -120,7 +120,6 @@ def on_message(ws, message):
             return
         msg = json.loads(inflator.decompress(buffer))
         buffer = bytearray()
-    print(f"ws: {msg['op']}")
     if msg['op'] == 10:
         heartbeat_interval = msg['d']['heartbeat_interval']
         time.sleep(random.random() * heartbeat_interval / 10000)
