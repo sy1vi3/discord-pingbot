@@ -120,150 +120,145 @@ def on_message(ws, message):
             return
         msg = json.loads(inflator.decompress(buffer))
         buffer = bytearray()
-    if msg['op'] == 10:
-        heartbeat_interval = msg['d']['heartbeat_interval']
-        time.sleep(random.random() * heartbeat_interval / 10000)
-        send_heartbeat()
-        thread = Thread(target = repeat_heartbeat, args = (1,))
-        thread.start()
-        login()
-    elif msg['op'] == 0:
-        prev_sequence_number = msg['s']
-        
-        if msg['t'] == "MESSAGE_CREATE":
-            print("message create")
-            data = msg['d']
-            if 'author' not in data:
-                return
-            author = data['author']
-            if 'member' in data:
-                member = data['member']
-            else:
-                member = {'nick': author['username']}
-            username = member['nick']
-            if username is None:
-                username = author['username']
-            Posts.create(guid=int(data['id']), 
-                         author_id=int(author['id']),
-                         author_nickname=username, 
-                         author_username=author['username'], 
-                         author_discrim=int(author['discriminator']), 
-                         guild_id=int(data['guild_id']),
-                         channel_id=int(data['channel_id']),
-                         author_pfp=author['avatar'],
-                         timestamp = data['timestamp'],
-                         content=data['content'],
-                         rev=0,
-                         deleted=False,
-                         attachments=data['attachments'],
-                         embeds = data['embeds'])
-            for r in ping_regexes:
-                if (matched_regex := re.search(r['regex'], data['content'])) is not None:
-                    webhook_data = {
-                        'username': f'{member["nick"]}',
-                        'avatar_url': f'https://cdn.discordapp.com/avatars/{author["id"]}/{author["avatar"]}.png',
-                        'content': f'<@{r["user"]}> <#{data["channel_id"]}> `{matched_regex.group()}`\nhttps://discord.com/channels/{data["guild_id"]}/{data["channel_id"]}/{data["id"]}'
-                    }
-                    r = requests.post(webhook_url_pingbot,
-                              json=webhook_data,
-                              headers=discord_headers)
-                    print("sending")
+    try:
+        if msg['op'] == 10:
+            heartbeat_interval = msg['d']['heartbeat_interval']
+            time.sleep(random.random() * heartbeat_interval / 10000)
+            send_heartbeat()
+            thread = Thread(target = repeat_heartbeat, args = (1,))
+            thread.start()
+            login()
+        elif msg['op'] == 0:
+            prev_sequence_number = msg['s']
+            
+            if msg['t'] == "MESSAGE_CREATE":
+                print("message create")
+                data = msg['d']
+                if 'author' not in data:
+                    return
+                author = data['author']
+                if 'member' in data:
+                    member = data['member']
+                else:
+                    member = {'nick': author['username']}
+                username = member['nick']
+                if username is None:
+                    username = author['username']
+                Posts.create(guid=int(data['id']), 
+                            author_id=int(author['id']),
+                            author_nickname=username, 
+                            author_username=author['username'], 
+                            author_discrim=int(author['discriminator']), 
+                            guild_id=int(data['guild_id']),
+                            channel_id=int(data['channel_id']),
+                            author_pfp=author['avatar'],
+                            timestamp = data['timestamp'],
+                            content=data['content'],
+                            rev=0,
+                            deleted=False,
+                            attachments=data['attachments'],
+                            embeds = data['embeds'])
+                for a in data['attachments']:
+                    with open('./temp/' + a['id'] + '-' + a['filename'], 'wb') as f:
+                            shutil.copyfileobj(requests.get(a['url'], stream=True).raw, f)
+                for r in ping_regexes:
+                    if (matched_regex := re.search(r['regex'], data['content'])) is not None:
+                        webhook_data = {
+                            'username': f'{member["nick"]}',
+                            'avatar_url': f'https://cdn.discordapp.com/avatars/{author["id"]}/{author["avatar"]}.png',
+                            'content': f'<@{r["user"]}> <#{data["channel_id"]}> `{matched_regex.group()}`\nhttps://discord.com/channels/{data["guild_id"]}/{data["channel_id"]}/{data["id"]}'
+                        }
+                        r = requests.post(webhook_url_pingbot,
+                                json=webhook_data,
+                                headers=discord_headers)
+                        print("sending")
 
-        elif msg['t'] == "MESSAGE_UPDATE":
-            print("message edit")
-            data = msg['d']
-            if 'author' not in data:
-                return
-            author = data['author']
-            if 'member' in data:
-                member = data['member']
-            else:
-                member = {'nick': author['username']}
-            username = member['nick']
-            if username is None:
-                username = author['username']
-            q = Posts.select().where(Posts.guid == data['id']).order_by(Posts.rev.desc())
-            if len(q) < 1:
-                return
-            recent_revision = q[0]
-            recent_revision.deleted = True
-            recent_revision.save()
-            Posts.create(guid=int(data['id']), 
-                         author_id=int(author['id']),
-                         author_nickname=username, 
-                         author_username=author['username'], 
-                         author_discrim=int(author['discriminator']), 
-                         guild_id=int(data['guild_id']),
-                         channel_id=int(data['channel_id']),
-                         author_pfp=author['avatar'],
-                         timestamp = data['timestamp'],
-                         content=data['content'],
-                         rev=recent_revision.rev + 1,
-                         deleted=False,
-                         attachments=data['attachments'],
-                         embeds = data['embeds'])
-            if(int(author['id']) in non_tracked_users):
-                return
-            webhook_data = {
-                'username': f'{recent_revision.author_nickname}',
-                'avatar_url': f'https://cdn.discordapp.com/avatars/{recent_revision.author_id}/{recent_revision.author_pfp}.png',
-                'content': f'<#{recent_revision.channel_id}> {recent_revision.content}'
-            }
-            if len(recent_revision.attachments) > 0:
-                files = dict()
-                for index, i in enumerate(recent_revision.attachments):
-                    with open('./temp/' + i['filename'], 'wb') as f:
-                        shutil.copyfileobj(requests.get(i['url'], stream=True).raw, f)
-                    files[f'files[{index}]'] = open('./temp/' + i['filename'], 'rb')
-                webhook_headers = {
-                    'Content-Type': 'multipart/form-data'
+            elif msg['t'] == "MESSAGE_UPDATE":
+                print("message edit")
+                data = msg['d']
+                if 'author' not in data:
+                    return
+                author = data['author']
+                if 'member' in data:
+                    member = data['member']
+                else:
+                    member = {'nick': author['username']}
+                username = member['nick']
+                if username is None:
+                    username = author['username']
+                q = Posts.select().where(Posts.guid == data['id']).order_by(Posts.rev.desc())
+                if len(q) < 1:
+                    return
+                recent_revision = q[0]
+                recent_revision.deleted = True
+                recent_revision.save()
+                Posts.create(guid=int(data['id']), 
+                            author_id=int(author['id']),
+                            author_nickname=username, 
+                            author_username=author['username'], 
+                            author_discrim=int(author['discriminator']), 
+                            guild_id=int(data['guild_id']),
+                            channel_id=int(data['channel_id']),
+                            author_pfp=author['avatar'],
+                            timestamp = data['timestamp'],
+                            content=data['content'],
+                            rev=recent_revision.rev + 1,
+                            deleted=False,
+                            attachments=data['attachments'],
+                            embeds = data['embeds'])
+                if(int(author['id']) in non_tracked_users):
+                    return
+                webhook_data = {
+                    'username': f'{recent_revision.author_nickname}',
+                    'avatar_url': f'https://cdn.discordapp.com/avatars/{recent_revision.author_id}/{recent_revision.author_pfp}.png',
+                    'content': f'<#{recent_revision.channel_id}> {recent_revision.content}'
                 }
-                r = requests.post(webhook_url_edits,
-                                  data=webhook_data,
-                                  files=files)
-                for index, i in enumerate(recent_revision.attachments):
-                    os.remove("./temp/" + i['filename'])
-            else:
-                r = requests.post(webhook_url_edits,
-                              json=webhook_data,
-                              headers=discord_headers)
-        elif msg['t'] == "MESSAGE_DELETE":
-            print("message delete")
-            data = msg['d']
-            q = Posts.select().where(Posts.guid == data['id']).order_by(Posts.rev.desc())
-            if len(q) < 1:
-                return
-            recent_revision = q[0]
-            recent_revision.deleted = True
-            recent_revision.save()
-            if(recent_revision.author_id in non_tracked_users):
-                return
-            webhook_data = {
-                'username': f'{recent_revision.author_nickname}',
-                'avatar_url': f'https://cdn.discordapp.com/avatars/{recent_revision.author_id}/{recent_revision.author_pfp}.png',
-                'content': f'<#{recent_revision.channel_id}> {recent_revision.content}'
-            }
-            if len(recent_revision.attachments) > 0:
-                files = dict()
-                for index, i in enumerate(recent_revision.attachments):
-                    with open('./temp/' + i['filename'], 'wb') as f:
-                        print(i['url'])
-                        shutil.copyfileobj(requests.get(i['url'], stream=True).raw, f)
-                    print("got here")
-                    files[f'files[{index}]'] = open('./temp/' + i['filename'], 'rb')
-                webhook_headers = {
-                    'Content-Type': 'multipart/form-data'
+                if len(recent_revision.attachments) > 0:
+                    files = dict()
+                    for index, i in enumerate(recent_revision.attachments):
+                        files[f'files[{index}]'] = open('./temp/' + i['id'] + '-' + i['filename'], 'rb')
+                    webhook_headers = {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                    r = requests.post(webhook_url_edits,
+                                    data=webhook_data,
+                                    files=files)
+                else:
+                    r = requests.post(webhook_url_edits,
+                                json=webhook_data,
+                                headers=discord_headers)
+            elif msg['t'] == "MESSAGE_DELETE":
+                print("message delete")
+                data = msg['d']
+                q = Posts.select().where(Posts.guid == data['id']).order_by(Posts.rev.desc())
+                if len(q) < 1:
+                    return
+                recent_revision = q[0]
+                recent_revision.deleted = True
+                recent_revision.save()
+                if(recent_revision.author_id in non_tracked_users):
+                    return
+                webhook_data = {
+                    'username': f'{recent_revision.author_nickname}',
+                    'avatar_url': f'https://cdn.discordapp.com/avatars/{recent_revision.author_id}/{recent_revision.author_pfp}.png',
+                    'content': f'<#{recent_revision.channel_id}> {recent_revision.content}'
                 }
-                r = requests.post(webhook_url_deletes,
-                                  data=webhook_data,
-                                  files=files)
-                for index, i in enumerate(recent_revision.attachments):
-                    # os.remove("./temp/" + i['filename'])
-                    pass
-            else:
-                r = requests.post(webhook_url_deletes,
-                              json=webhook_data,
-                              headers=discord_headers)
+                if len(recent_revision.attachments) > 0:
+                    files = dict()
+                    for index, i in enumerate(recent_revision.attachments):
+                        files[f'files[{index}]'] = open('./temp/' + i['id'] + '-' + i['filename'], 'rb')
+                    webhook_headers = {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                    r = requests.post(webhook_url_deletes,
+                                    data=webhook_data,
+                                    files=files)
+                else:
+                    r = requests.post(webhook_url_deletes,
+                                json=webhook_data,
+                                headers=discord_headers)
+    except Exception as e:
+        print(f"error parsing message: {e}")
 
 
 def on_error(ws, error):
