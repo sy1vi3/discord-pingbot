@@ -39,7 +39,7 @@ ZLIB_SUFFIX = b'\x00\x00\xff\xff'
 buffer = bytearray()
 inflator = zlib.decompressobj()
 
-db = PostgresqlExtDatabase('vtow', user=os.environ['DB_USER'], password=os.environ['DB_PASS'], host=os.environ['DB_HOST'], port=os.environ['DB_PORT'])
+db = PostgresqlExtDatabase('vtow2', user=os.environ['DB_USER'], password=os.environ['DB_PASS'], host=os.environ['DB_HOST'], port=os.environ['DB_PORT'])
 
 class BaseModel(Model):
     class Meta:
