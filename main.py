@@ -206,7 +206,7 @@ def on_message(ws, message):
                             deleted=False,
                             attachments=data['attachments'],
                             embeds = data['embeds'])
-                if(int(author['id']) in non_tracked_users):
+                if(int(author['id']) in non_tracked_users or int(data['guild_id']) in non_tracked_users):
                     return
                 webhook_data = {
                     'username': f'{recent_revision.author_nickname}',
