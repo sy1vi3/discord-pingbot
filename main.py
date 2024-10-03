@@ -162,6 +162,8 @@ def on_message(ws, message):
                     with open('./temp/' + a['id'] + '-' + a['filename'], 'wb') as f:
                             shutil.copyfileobj(requests.get(a['url'], stream=True).raw, f)
                 for r in ping_regexes:
+                    if int(data['guild_id']) in non_tracked_users:
+                        continue
                     if (matched_regex := re.search(r['regex'], data['content'])) is not None:
                         webhook_data = {
                             'username': f'{member["nick"]}',
@@ -236,10 +238,8 @@ def on_message(ws, message):
                 recent_revision = q[0]
                 recent_revision.deleted = True
                 recent_revision.save()
-                if(recent_revision.author_id in non_tracked_users or int(data['guild_id']) in non_tracked_users):
+                if(recent_revision.author_id in non_tracked_users):
                     return
-                else:
-                    print(non_tracked_users, int(data['guild_id']))
                 webhook_data = {
                     'username': f'{recent_revision.author_nickname}',
                     'avatar_url': f'https://cdn.discordapp.com/avatars/{recent_revision.author_id}/{recent_revision.author_pfp}.png',
